@@ -1,0 +1,253 @@
+---
+title: "Posner Cueing"
+author: "Graham Albert"
+date: "June 9, 2019"
+output: html_document
+---
+
+
+###To load required packarges
+```{r}
+require(curl) 
+```
+######loading data
+#####for more advanced rotation.
+```{r}
+require(dplyr)
+```
+####for data manipulation.
+```{r}
+require(yaml)
+require(stringi)
+```
+####for correlation plot depiction.
+```{r}
+require(gplots)
+require(ggplot2)
+require(gridExtra)
+require(moments)
+```
+
+###To load glmm.
+```{r}
+require(lme4)
+require(AICcmodavg)
+require(MuMIn)
+require(r2glmm)
+require(lmerTest)
+```
+####T
+```{r}
+require(RColorBrewer) # needed for some extra colours in one of the graphs
+require(lmerTest)# to get p-value estimations that are not part of the standard lme4 packages
+```
+
+####To load my data set for the mating motivation scale into the  R work space.
+```{r}
+library(readr)
+POSNER <- read_csv("POSNER_Reduced.csv")
+View(POSNER)
+```
+
+
+####To determine variable names of the data set.
+```{r}
+summary(POSNER)
+dim(POSNER)
+names(POSNER)[1]<-"ID"
+names(POSNER)
+POSNER=POSNER[-c(1)]
+```
+
+
+
+####To filter out incorrect responses.
+```{r}
+POSNER_Reduced<-POSNER%>%
+select(ID,Snellen ,Grip_Strength,Chest_Strength,Handedness,Height, Weight,DomSum ,TDSum  ,State_Anxiety,Trait_Anxiety ,cue_image,Face_Set_Code,Face_Type_Code,cue_position_x ,cue_position_y ,target_position_x ,target_position_y,conguruence,corAns,orientation   ,trials.thisTrialN,trials.thisIndex,Experiment_Trials_button.keys,Experiment_Trials_button.corr,Experiment_Trials_button.rt) %>%
+filter(!Experiment_Trials_button.corr %in% c('0'))
+POSNER_Reduced
+dim(POSNER_Reduced)
+```
+
+####Lets obtain some summary statistics.
+```{r}
+summary(POSNER_Reduced)
+dim(POSNER_Reduced)
+View(POSNER_Reduced)
+```
+
+####Lets factor the variables which we are going to use as our random and fixed effects and append them to the data set.
+####These are: ID, trials, cue, image, Face_Set_Code, Face_Type_Code,cue_position_x,target_position_x conguruence, orientation, rectangle_color  Experiment_Trials_button.corr.
+####The fixed effects in this analysis will be  Face_Set_Code, Face_Type_Code.
+####The random effects in this analysis will be ID, trials, cue, image,cue_position_x,target_position_x conguruence, orientation, rectangle_color  Experiment_Trials_button.corr.
+####The dependent variable is continuous and it is reaction time.
+```{r}
+require(dplyr)
+POSNER = mutate(POSNER_Reduced,ID = as.factor(POSNER_Reduced$ID),trials.thisTrialN = as.factor(POSNER_Reduced$trials.thisTrialN), cue_image= as.factor(POSNER_Reduced$cue_image),Face_Set_Code = as.factor(POSNER_Reduced$Face_Set_Code), Face_Type_Code= as.factor(POSNER_Reduced$Face_Type_Code), cue_position_x  = as.factor(POSNER_Reduced$cue_position_x), target_position_x  = as.factor(POSNER_Reduced$target_position_x), conguruence=as.factor(POSNER_Reduced$conguruence),orientation =as.factor(POSNER_Reduced$orientation))
+View(POSNER)
+```
+####To transform variables into numeric variables.
+```{r}
+POSNER$DomIPIP =as.numeric(POSNER$DomSum)
+POSNER$Tdom=as.numeric(POSNER$TDSum)
+POSNER$State=(POSNER$State_Anxiety)
+POSNER$Trait=(POSNER$Trait_Anxiety)
+```
+####Now lets mutate level 2 predictors to standardizedthem
+```{r}
+POSNER$zGrip_Strength=(POSNER$Grip_Strength-mean(POSNER$Grip_Strength,na.rm=TRUE))/(sd(POSNER$Grip_Strength,na.rm=TRUE))
+POSNER$zChest_Strength=(POSNER$Chest_Strength-mean(POSNER$Chest_Strength,na.rm=TRUE))/(sd(POSNER$Chest_Strength,na.rm=TRUE))
+POSNER$zHeight =(POSNER$Height-mean(POSNER$Height,na.rm=TRUE))/(sd(POSNER$Height,na.rm=TRUE))
+POSNER$zWeight=(POSNER$Weight-mean(POSNER$Weight,na.rm=TRUE))/(sd(POSNER$Weight,na.rm=TRUE))
+POSNER$zDomSum =(POSNER$DomSum-mean(POSNER$DomSum,na.rm=TRUE))/(sd(POSNER$DomSum,na.rm=TRUE))
+POSNER$zTDSum=(POSNER$TDSum-mean(POSNER$TDSum,na.rm=TRUE))/(sd(POSNER$TDSum,na.rm=TRUE))
+POSNER$zState_Anxiety=(POSNER$State_Anxiety-mean(POSNER$State_Anxiety,na.rm=TRUE))/(sd(POSNER$State_Anxiety,na.rm=TRUE))
+POSNER$zTrait_Anxiety=(POSNER$Trait_Anxiety-mean(POSNER$Trait_Anxiety,na.rm=TRUE))/(sd(POSNER$Trait_Anxiety,na.rm=TRUE))
+summary(POSNER)
+```
+
+
+
+
+####Lets determine if we effectively factors the variables of interested.
+###We will determine the number of levels for each factor.
+```{r}
+nlevels(POSNER$ID)
+nlevels(POSNER$trials.thisTrialN)
+nlevels(POSNER$cue_image)
+nlevels(POSNER$Face_Set_Code)
+nlevels(POSNER$Face_Type_Code)
+nlevels(POSNER$cue_position_x)
+nlevels(POSNER$target_position_x)
+nlevels(POSNER$conguruence)
+nlevels(POSNER$orientation)
+```
+####Now let's windsorize our continuous dependent variable RT.
+
+
+
+####Based on the inspection of the RT data it is not normally distributed. I will first look at a histogram to look at the distribution of the data.
+```{r}
+POSNER=mutate(POSNER,Experiment_Trials_button.rt=as.numeric(POSNER$Experiment_Trials_button.rt))
+hist(POSNER$Experiment_Trials_button.rt)
+summary(POSNER$Experiment_Trials_button.rt)
+```
+###To compute RT by subject.
+```{r}
+require(dplyr)
+by_ID <- group_by(POSNER, ID)
+head(by_ID)
+by_ID_2<-summarize(by_ID,mean_RT = mean(Experiment_Trials_button.rt, na.rm=TRUE), sd_RT = sd(Experiment_Trials_button.rt, na.rm=TRUE), out_hi_RT = (mean_RT+2*(sd_RT)),out_low_RT = (mean_RT-2*(sd_RT)))
+View(by_ID_2)
+by_ID_3<-merge(by_ID,by_ID_2, by = c('ID'))
+View(by_ID_3)
+```
+
+####Now I am going to filter out trials if they fall outside of +-3 SD from the participants mean
+```{r}
+require(dplyr)
+by_ID_4=by_ID_3
+by_ID_4$Experiment_Trials_button.rt<-replace(by_ID_4$Experiment_Trials_button.rt,by_ID_4$Experiment_Trials_button.rt>by_ID_4$out_hi_RT, NA)
+by_ID_4$Experiment_Trials_button.rt<-replace(by_ID_4$Experiment_Trials_button.rt,by_ID_4$Experiment_Trials_button.rt<by_ID_4$out_low_RT, NA)
+View(by_ID_4)
+summary(by_ID_4)
+```
+
+####To view the windsorized rt.
+```{r}
+hist(by_ID_4$Experiment_Trials_button.rt)
+```
+
+
+###To create Posner master.
+```{r}
+POSNER_MASTER=by_ID_4
+```
+####To recode recall and encoding so that the reference category changes.
+```{R}
+POSNER_MASTER$Face_Set_Code = factor(POSNER_MASTER$Face_Set_Code,
+                             levels = c(1,2),
+                             labels = c("LSF", "NUSF"))
+table(POSNER_MASTER$Face_Set_Code)
+POSNER_MASTER$Face_Type_Code= factor(POSNER_MASTER$Face_Type_Code ,
+                             levels = c(1,2),
+                             labels = c("FEM", "MASC"))
+table(POSNER_MASTER$Face_Type_Code )
+
+POSNER_MASTER$cue_position_x = factor(POSNER_MASTER$cue_position_x  ,
+                             levels = c(-2,2),
+                             labels = c("LEFT", "RIGHT"))
+table(POSNER_MASTER$cue_position_x)
+POSNER_MASTER$target_position_x = factor(POSNER_MASTER$target_position_x  ,
+                             levels = c(-2,2),
+                             labels = c("LEFT", "RIGHT"))
+table(POSNER_MASTER$target_position_x)
+
+POSNER_MASTER$conguruence  = factor(POSNER_MASTER$conguruence,
+                             levels = c(0,4),
+                             labels = c("INCON", "CON"))
+table(POSNER_MASTER$conguruence)
+
+POSNER_MASTER$orientation  = factor(POSNER_MASTER$orientation,
+                             levels = c(45,0),
+                             labels = c("DIAM", "RECT"))
+table(POSNER_MASTER$orientation)
+```
+
+
+
+###To obtain skew and kurtisosis statistics.
+```{r}
+require(psych)
+describe(POSNER_MASTER$Experiment_Trials_button.rt)
+```
+
+####Now lets conduct the multi-level model.
+####The dependent variables is reaction time.
+####The level 1 fixed effects are morph type (i.e., whether the face is masculinized or feminized), 
+####conguruence (referred to is trial type in the manuscript: refers to whether the target shape was presented in the same visual field as the target face or the opposite visual field.
+####target_position_x which is referred to as target location (i.e., presented in the left or right visual field)
+####The level 2 fixed effects are trait dominance and trait anxiety.
+####The random effects are cue image (i.e., the image presented for that trial) and participant.
+
+
+####All of the above fixed effects.
+```{r}
+require(lme4)
+require(lmerTest)
+M1=glmer(Experiment_Trials_button.rt~(Face_Type_Code*conguruence*target_position_x*zDomSum+zTrait_Anxiety)+(1|ID:cue_image),data=POSNER_MASTER, family = Gamma(link ="inverse"), glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5)))
+summary(M1)
+```
+
+
+
+###To investigate interactions and main effects.
+```{R}
+require(emmeans)
+emmeans(M1, list(pairwise ~ conguruence), adjust = "tukey")
+emmeans(M1, list(pairwise ~ target_position_x), adjust = "tukey")
+```
+
+
+####To inspect the interaction with lsmeans.
+```{r}
+require(lsmeans)
+lsmeans(M1, list(pairwise ~Face_Type_Code:conguruence:target_position_x:zDomSum))
+```
+
+####To obtain the ICC for the model.
+```{r}
+require(sjstats)
+performance::icc(M1)
+```
+####Still I high level of inter-class correlation.
+
+##Now let's get the confidence intervals for our model.
+```{r}
+se<- sqrt(diag(vcov(M1)))
+View(se)
+#generate table of estimates with 95% CI
+(tab<-cbind(Est = fixef(M1), LL=fixef(M1)-1.96*se, UL=fixef(M1)+1.96*se))
+View(tab)
+```

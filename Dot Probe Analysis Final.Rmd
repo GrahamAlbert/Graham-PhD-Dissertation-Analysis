@@ -1,0 +1,326 @@
+---
+title: "Dot Probe Task"
+author: "Graham Albert"
+date: "October 8 2020"
+output: html_document
+---
+
+
+###To load required packarges
+```{r}
+require(curl) 
+```
+######loading data
+#####for more advanced rotation.
+```{r}
+require(dplyr)
+```
+####for data manipulation.
+```{r}
+require(yaml)
+require(stringi)
+```
+####for correlation plot depiction.
+```{r}
+require(gplots)
+require(ggplot2)
+require(gridExtra)
+require(moments)
+```
+
+###To load glmm.
+```{r}
+require(lme4)
+require(AICcmodavg)
+require(MuMIn)
+require(r2glmm)
+```
+####T
+```{r}
+require(RColorBrewer) # needed for some extra colours in one of the graphs
+require(lmerTest)# to get p-value estimations that are not part of the standard lme4 packages
+require(lsmeans)
+```
+
+
+####To load my data set for the mating motivation scale into the  R work space.
+```{r}
+library(readr)
+DotProbe <- read_csv("DotProbe.csv")
+View(DotProbe)
+DotProbe=DotProbe[-c(1)]
+```
+
+####Lets obtain some summary statistics.
+```{r}
+summary(DotProbe)
+dim(DotProbe)
+View(DotProbe)
+```
+
+####Lets factor the variables which we are going to use as our random and fixed effects and append them to the data set.
+###We will exclude all incorrect responses from the data set.
+```{r}
+DotProbe_REDUCED<-DotProbe%>%
+select(ID,Snellen_Denominator,Grip_Strength,Chest_Strength,Handness,Height, Weight,DomIPIP,TDScore,State,Trait,cue_image_1,cue_image_2,Face_Set_Code,Face_Type_Code_1,Face_Type_Code_2, Dominance_Score,cue_position_x_1,cue_position_x_2,target_position_x,conguruence,experimental_trials.thisN,experimental_trials.thisIndex,responsebutton.keys,responsebutton.corr, responsebutton.rt) %>%
+filter(!responsebutton.corr %in% c('0'))
+DotProbe_REDUCED
+dim(DotProbe_REDUCED)
+```
+
+####The dependent variable is continuous and it is reaction time.
+```{r}
+require(dplyr)
+DotProbe_REDUCED = mutate(DotProbe_REDUCED,ID = as.factor(DotProbe_REDUCED$ID), cue_image_1 = as.factor(DotProbe_REDUCED$cue_image_1),cue_image_2 = as.factor(DotProbe_REDUCED$cue_image_2),Face_Set_Code = as.factor(DotProbe_REDUCED$Face_Set_Code), Face_Type_Code_1 = as.factor(DotProbe_REDUCED$Face_Type_Code_1),Face_Type_Code_2 = as.factor(DotProbe_REDUCED$Face_Type_Code_2 ), cue_position_x_1 = as.factor(DotProbe_REDUCED$cue_position_x_1),cue_position_x_2  = as.factor(DotProbe_REDUCED$cue_position_x_2), target_position_x  = as.factor(DotProbe_REDUCED$target_position_x), conguruence=as.factor(DotProbe_REDUCED$conguruence), experimental_trials.thisN=as.factor(DotProbe_REDUCED$experimental_trials.thisN), Dominance_Score=as.factor(DotProbe_REDUCED$Dominance_Score),responsebutton.corr=as.factor(DotProbe_REDUCED$responsebutton.corr))
+```
+####To transform variables into numeric variables.
+```{r}
+DotProbe_REDUCED$DomIPIP =as.numeric(DotProbe_REDUCED$DomIPIP)
+DotProbe_REDUCED$TDScore=as.numeric(DotProbe_REDUCED$TDScore)
+DotProbe_REDUCED$State=(DotProbe_REDUCED$State)
+DotProbe_REDUCED$Trait=(DotProbe_REDUCED$Trait)
+```
+####Now lets mutate level 2 predictors to standardizedthem
+```{r}
+DotProbe_REDUCED$zGrip_Strength=(DotProbe_REDUCED$Grip_Strength-mean(DotProbe_REDUCED$Grip_Strength))/(sd(DotProbe_REDUCED$Grip_Strength))
+DotProbe_REDUCED$zChest_Strength=(DotProbe_REDUCED$Chest_Strength-mean(DotProbe_REDUCED$Chest_Strength))/(sd(DotProbe_REDUCED$Chest_Strength))
+DotProbe_REDUCED$zHeight =(DotProbe_REDUCED$Height-mean(DotProbe_REDUCED$Height))/(sd(DotProbe_REDUCED$Height))
+DotProbe_REDUCED$zWeight=(DotProbe_REDUCED$Weight-mean(DotProbe_REDUCED$Weight))/(sd(DotProbe_REDUCED$Weight))
+DotProbe_REDUCED$zDomIPIP =(DotProbe_REDUCED$DomIPIP-mean(DotProbe_REDUCED$DomIPIP,na.rm=TRUE))/(sd(DotProbe_REDUCED$DomIPIP,na.rm=TRUE))
+DotProbe_REDUCED$zTdom=(DotProbe_REDUCED$TDScore-mean(DotProbe_REDUCED$TDScore,na.rm=TRUE))/(sd(DotProbe_REDUCED$TDScore,na.rm=TRUE))
+DotProbe_REDUCED$zState=(DotProbe_REDUCED$State-mean(DotProbe_REDUCED$State,na.rm=TRUE))/(sd(DotProbe_REDUCED$State,na.rm=TRUE))
+DotProbe_REDUCED$zTrait=(DotProbe_REDUCED$Trait-mean(DotProbe_REDUCED$Trait,na.rm=TRUE))/(sd(DotProbe_REDUCED$Trait,na.rm=TRUE))
+View(DotProbe_REDUCED)
+```
+####Lets determine if we effectively factors the variables of interested.
+###We will determine the number of levels for each factor.
+```{r}
+nlevels(DotProbe_REDUCED$ID)
+nlevels(DotProbe_REDUCED$cue_image_1)
+nlevels(DotProbe_REDUCED$cue_image_2)
+nlevels(DotProbe_REDUCED$Face_Set_Code)
+nlevels(DotProbe_REDUCED$Face_Type_Code_1)
+nlevels(DotProbe_REDUCED$Face_Type_Code_2)
+nlevels(DotProbe_REDUCED$cue_position_x_1)
+nlevels(DotProbe_REDUCED$cue_position_x_2)
+nlevels(DotProbe_REDUCED$target_position_x)
+nlevels(DotProbe_REDUCED$conguruence)
+nlevels(DotProbe_REDUCED$Dominance_Score)
+```
+####Now let's windsorize our continuous dependent variable RT.
+
+
+
+####Based on the inspection of the RT data it is not normally distributed. I will first look at a histogram to look at the distribution of the data.
+```{r}
+DotProbe_REDUCED=mutate(DotProbe_REDUCED,responsebutton.rt=as.numeric(DotProbe_REDUCED$responsebutton.rt))
+hist(DotProbe_REDUCED$responsebutton.rt)
+summary(DotProbe_REDUCED$responsebutton.rt)
+```
+
+
+
+
+
+
+
+
+###To make 
+```{r}
+DotProbe_MASTER=DotProbe_REDUCED
+```
+
+
+
+####Based on the inspection of the RT data it is not normally distributed. I will first look at a histogram to look at the distribution of the data.
+```{r}
+
+DotProbe_MASTER=mutate(DotProbe_MASTER,responsebutton.rt=as.numeric(DotProbe_MASTER$responsebutton.rt))
+hist(DotProbe_MASTER$responsebutton.rt)
+summary(DotProbe_MASTER$responsebutton.rt)
+```
+###To compute RT by subject.
+```{r}
+require(dplyr)
+by_ID <- group_by(DotProbe_MASTER, ID)
+head(by_ID)
+by_ID_2<-summarize(by_ID,mean_RT = mean(responsebutton.rt, na.rm=TRUE), sd_RT = sd(responsebutton.rt, na.rm=TRUE), out_hi_RT = (mean_RT+2*(sd_RT)),out_low_RT = (mean_RT-2*(sd_RT)))
+View(by_ID_2)
+by_ID_3<-merge(by_ID,by_ID_2, by = c('ID'))
+View(by_ID_3)
+```
+
+####Now I am going to filter out trials if they fall outside of +-3 SD from the participants mean
+```{r}
+require(dplyr)
+by_ID_4=by_ID_3
+by_ID_4$responsebutton.rt<-replace(by_ID_4$responsebutton.rt,by_ID_4$responsebutton.rt>by_ID_4$out_hi_RT, NA)
+by_ID_4$responsebutton.rt<-replace(by_ID_4$responsebutton.rt,by_ID_4$responsebutton.rt<by_ID_4$out_low_RT, NA)
+View(by_ID_4)
+summary(by_ID_4)
+```
+
+####To view the windsorized rt.
+```{r}
+hist(by_ID_4$responsebutton.rt)
+```
+
+
+####To recode recall and encoding so that the reference category changes.
+```{R}
+DotProbe_MASTER$Face_Set_Code = factor(DotProbe_MASTER$Face_Set_Code,
+                             levels = c(1,2),
+                             labels = c("LSF", "NUSF"))
+table(DotProbe_MASTER$Face_Set_Code)
+DotProbe_MASTER$Face_Type_Code_1= factor(DotProbe_MASTER$Face_Type_Code_1 ,
+                             levels = c(1,2,3),
+                             labels = c("FEM", "MASC","Reg"))
+table(DotProbe_MASTER$Face_Type_Code_1)
+DotProbe_MASTER$Face_Type_Code_2= factor(DotProbe_MASTER$Face_Type_Code_2 ,
+                             levels = c(1,2,3),
+                             labels = c("FEM", "MASC","Reg"))
+table(DotProbe_MASTER$Face_Type_Code_2)
+DotProbe_MASTER$cue_position_x_1= factor(DotProbe_MASTER$cue_position_x_1 ,
+                             levels = c(-2,2),
+                             labels = c("LEFT", "RIGHT"))
+table(DotProbe_MASTER$cue_position_x_1)
+DotProbe_MASTER$cue_position_x_2= factor(DotProbe_MASTER$cue_position_x_2 ,
+                             levels = c(-2,2),
+                             labels = c("LEFT", "RIGHT"))
+table(DotProbe_MASTER$cue_position_x_2)
+DotProbe_MASTER$target_position_x = factor(DotProbe_MASTER$target_position_x,
+                             levels = c(-2,2),
+                             labels = c("LEFT", "RIGHT"))
+table(DotProbe_MASTER$target_position_x)
+DotProbe_MASTER$conguruence  = factor(DotProbe_MASTER$conguruence,
+                             levels = c(0,1),
+                             labels = c("INCON", "CON"))
+table(DotProbe_MASTER$conguruence)
+DotProbe_MASTER$Dominance_Score  = factor(DotProbe_MASTER$Dominance_Score,
+                             levels = c(3,2,6),
+                             labels = c("RegVFem", "MascVFem","MascVRegular"))
+table(DotProbe_MASTER$Dominance_Score)
+```
+
+
+
+
+
+####Now lets conduct the multi-level model.
+####The dependent variables is reaction time.
+####The level 1 fixed effects are dominance score (i.e., whether the face is masculinized or feminized), 
+####conguruence (referred to is trial type in the manuscript: refers to whether the target shape was presented in the same visual field as the target face or the opposite visual field.
+####target_position_x which is referred to as target location (i.e., presented in the left or right visual field)
+####The level 2 fixed effects are trait dominance and trait anxiety.
+####The random effects are cue image (i.e., the image presented for that trial) and participant.
+
+
+
+####Lets add level 2 fixed effects.
+
+
+####Dominance and anxiety
+```{r}
+require(lme4)
+M1 = glmer(data=DotProbe_MASTER,responsebutton.rt~Dominance_Score*conguruence*target_position_x*zDomIPIP+zTrait+(1|ID:cue_image_1), family=Gamma(link ="inverse"), glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e9)))
+summary(M1)
+```
+
+####To inspect the interaction with lsmeans.
+```{r}
+require(lsmeans)
+lsmeans(M1, list(pairwise ~Dominance_Score:conguruence:target_position_x:zDomIPIP))
+```
+####To explore the interaction
+```{r}
+require(lsmeans)
+lsmeans(M1, list(pairwise ~conguruence:target_position_x), adjust = "holm")
+```
+
+####To explore the interaction
+```{r}
+require(lsmeans)
+lsmeans(M1, list(pairwise ~Dominance_Score:target_position_x), adjust = "holm")
+```
+
+
+####To explore the interaction
+```{r}
+require(lsmeans)
+lsmeans(M1, list(pairwise ~Dominance_Score), adjust = "holm")
+```
+
+####Lets compute the means for RT by morph type.
+```{r}
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$Dominance_Score,DotProbe_MASTER$conguruence), na.rm=TRUE, mean)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$Dominance_Score,DotProbe_MASTER$conguruence),  na.rm=TRUE,sd)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$Dominance_Score,DotProbe_MASTER$conguruence), length)
+```
+
+
+
+
+####Lets compute the means for RT by morph type.
+```{r}
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$conguruence), na.rm=TRUE, mean)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$conguruence),  na.rm=TRUE,sd)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$conguruence), length)
+```
+
+####Lets compute the means for RT by morph type.
+```{r}
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$target_position_x), na.rm=TRUE, mean)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$target_position_x),  na.rm=TRUE,sd)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$target_position_x), length)
+```
+
+####Lets compute the means for RT by morph type.
+```{r}
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$Dominance_Score,DotProbe_MASTER$target_position_x), na.rm=TRUE, mean)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$Dominance_Score,DotProbe_MASTER$target_position_x),  na.rm=TRUE,sd)
+tapply(DotProbe_MASTER$responsebutton.rt, list(DotProbe_MASTER$Dominance_Score,DotProbe_MASTER$target_position_x), length)
+```
+####To obtain the ICC for models 2.
+```{r}
+require(sjstats)
+performance::icc(M1)
+```
+##Now let's get the confidence intervals for our model.
+```{r}
+se<- sqrt(diag(vcov(M1)))
+View(se)
+#generate table of estimates with 95% CI
+(tab<-cbind(Est = fixef(M1), LL=fixef(M1)-1.96*se, UL=fixef(M1)+1.96*se))
+View(tab)
+```
+###To visual model.
+```{r}
+require(effects)
+e <- allEffects(M1)
+print(e)
+plot(e)
+```
+
+# allEffects() returns a list, but for our model (where everything can interact with everything), there's only one element
+```{r}
+plot(e,multiline=TRUE,confint=TRUE,ci.style="bars"
+     ,main="Effects of Face Morphs on RT"
+     ,xlab="Face Type"
+     ,ylab="Reaction Time")
+```
+
+
+
+####Let's generate the AIC for the 8 models.
+```{r}
+require(AICcmodavg)
+print(aictab(list(M1), c("M1"), LL = FALSE))
+```
+
+####Let's use ggplot to create a regression plot for the data.
+```{r}
+require(sjPlot)
+library(sjmisc)
+plot_model(M1)
+```
+

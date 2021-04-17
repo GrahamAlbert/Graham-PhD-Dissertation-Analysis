@@ -1,0 +1,224 @@
+---
+title: "Flanker Task"
+author: "Graham Albert"
+date: "October 8 2020"
+output: html_document
+---
+
+
+###To load required packarges
+```{r}
+require(curl) 
+```
+######loading data
+#####for more advanced rotation.
+```{r}
+require(dplyr)
+```
+####for data manipulation.
+```{r}
+require(yaml)
+require(stringi)
+```
+####for correlation plot depiction.
+```{r}
+require(gplots)
+require(ggplot2)
+require(gridExtra)
+require(moments)
+```
+
+###To load glmm.
+```{r}
+require(lme4)
+require(AICcmodavg)
+require(MuMIn)
+require(r2glmm)
+```
+####T
+```{r}
+require(RColorBrewer) # needed for some extra colours in one of the graphs
+require(lmerTest)# to get p-value estimations that are not part of the standard lme4 packages
+```
+
+
+####To load my data set for the mating motivation scale into the  R work space.
+```{r}
+library(readr)
+FlankerTask <-  read_csv("Flanker Task.csv")
+View(FlankerTask)
+FlankerTask=FlankerTask[-c(1)]
+```
+
+####Lets obtain some summary statistics.
+```{r}
+summary(FlankerTask)
+dim(FlankerTask)
+View(FlankerTask)
+```
+###We will exclude all incorrect answers.
+```{r}
+
+FlankerTask_REDUCED <-FlankerTask_REDUCED%>% 
+select(ID, Snellen_Denominator,Grip_Strength,Chest_Strength,Handness,Height, Weight, DomIPIP,Tdom,State,Trait,cue_image_1,Face_Set_Code, Face_Type_Code,letter,corAns,orientation,experimental_trials.thisN,experimental_trials.thisIndex,responsebutton.keys,responsebutton.corr, responsebutton.rt) %>%
+filter(!responsebutton.corr %in% c('0'))
+FlankerTask_REDUCED
+dim(FlankerTask_REDUCED)
+```
+####Lets factor the variables which we are going to use as our random and fixed effects and append them to the data set.
+
+####The dependent variable is continuous and it is reaction time.
+```{r}
+require(dplyr)
+FlankerTask = mutate(FlankerTask_REDUCED,ID = as.factor(FlankerTask_REDUCED$ID), cue_image_1 = as.factor(FlankerTask_REDUCED$cue_image_1), Face_Set_Code = as.factor(FlankerTask_REDUCED$Face_Set_Code), Face_Type_Code = as.factor(FlankerTask_REDUCED$Face_Type_Code), orientation =as.factor(FlankerTask_REDUCED$orientation), experimental_trials.thisN=as.factor(FlankerTask_REDUCED$experimental_trials.thisN),letter=as.factor(FlankerTask_REDUCED$letter),  responsebutton.corr=as.factor(FlankerTask_REDUCED$ responsebutton.corr))
+```
+####To transform variables into numeric variables.
+```{r}
+FlankerTask$DomIPIP =as.numeric(FlankerTask$DomIPIP)
+FlankerTask$Tdom=as.numeric(FlankerTask$Tdom)
+FlankerTask$State=(FlankerTask$State)
+FlankerTask$Trait=(FlankerTask$Trait)
+```
+####Now lets mutate level 2 predictors to standardizedthem
+```{r}
+FlankerTask$zGrip_Strength=(FlankerTask$Grip_Strength-mean(FlankerTask$Grip_Strength))/(sd(FlankerTask$Grip_Strength))
+FlankerTask$zChest_Strength=(FlankerTask$Chest_Strength-mean(FlankerTask$Chest_Strength))/(sd(FlankerTask$Chest_Strength))
+FlankerTask$zHeight =(FlankerTask$Height-mean(FlankerTask$Height))/(sd(FlankerTask$Height))
+FlankerTask$zWeight=(FlankerTask$Weight-mean(FlankerTask$Weight))/(sd(FlankerTask$Weight))
+FlankerTask$zDomIPIP =(FlankerTask$DomIPIP-mean(FlankerTask$DomIPIP,na.rm=TRUE))/(sd(FlankerTask$DomIPIP,na.rm=TRUE))
+FlankerTask$zTdom=(FlankerTask$Tdom-mean(FlankerTask$Tdom,na.rm=TRUE))/(sd(FlankerTask$Tdom,na.rm=TRUE))
+FlankerTask$zState=(FlankerTask$State-mean(FlankerTask$State,na.rm=TRUE))/(sd(FlankerTask$State,na.rm=TRUE))
+FlankerTask$zTrait=(FlankerTask$Trait-mean(FlankerTask$Trait,na.rm=TRUE))/(sd(FlankerTask$Trait,na.rm=TRUE))
+View(FlankerTask)
+```
+
+
+
+####Lets determine if we effectively factors the variables of interested.
+###We will determine the number of levels for each factor.
+```{r}
+nlevels(FlankerTask$ID)
+nlevels(FlankerTask$cue_image_1)
+nlevels(FlankerTask$Face_Set_Code)
+nlevels(FlankerTask$Face_Type_Code)
+nlevels(FlankerTask$letter)
+nlevels(FlankerTask$orientation)
+nlevels(FlankerTask$experimental_trials.thisN)
+```
+
+####Based on the inspection of the RT data it is not normally distributed. I will first look at a histogram to look at the distribution of the data.
+```{r}
+FlankerTask=mutate(FlankerTask,responsebutton.rt=as.numeric(FlankerTask$responsebutton.rt))
+hist(FlankerTask$responsebutton.rt)
+summary(FlankerTask$responsebutton.rt)
+```
+
+
+
+
+
+
+
+
+###To make 
+```{r}
+FlankerTask_MASTER=FlankerTask
+```
+####To recode recall and encoding so that the reference category changes.
+```{R}
+FlankerTask_MASTER$Face_Set_Code = factor(FlankerTask_MASTER$Face_Set_Code,
+                             levels = c(1,2),
+                             labels = c("LSF", "NUSF"))
+table(FlankerTask_MASTER$Face_Set_Code)
+FlankerTask_MASTER$Face_Type_Code= factor(FlankerTask_MASTER$Face_Type_Code,
+                             levels = c(1,2,3),
+                             labels = c("FEM", "MASC","Reg"))
+table(FlankerTask_MASTER$Face_Type_Code)
+FlankerTask_MASTER$orientation= factor(FlankerTask_MASTER$orientation ,
+                             levels = c(0,180),
+                             labels = c("Rightsideup","Upsidedown"))
+table(FlankerTask_MASTER$orientation)
+FlankerTask_MASTER$letter= factor(FlankerTask_MASTER$letter ,
+                             levels = c(1,2),
+                             labels = c("L", "T"))
+table(FlankerTask_MASTER$letter)
+```
+
+
+####Based on the inspection of the RT data it is not normally distributed. I will first look at a histogram to look at the distribution of the data.
+```{r}
+FlankerTask_MASTER=mutate(FlankerTask_MASTER,responsebutton.rt=as.numeric(FlankerTask_MASTER$responsebutton.rt))
+hist(FlankerTask_MASTER$responsebutton.rt)
+summary(FlankerTask_MASTER$responsebutton.rt)
+```
+###To compute RT by subject.
+```{r}
+require(dplyr)
+by_ID <- group_by(FlankerTask_MASTER, ID)
+head(by_ID)
+by_ID_2<-summarize(by_ID,mean_RT = mean(responsebutton.rt, na.rm=TRUE), sd_RT = sd(responsebutton.rt, na.rm=TRUE), out_hi_RT = (mean_RT+2*(sd_RT)),out_low_RT = (mean_RT-2*(sd_RT)))
+View(by_ID_2)
+by_ID_3<-merge(by_ID,by_ID_2, by = c('ID'))
+View(by_ID_3)
+summary(by_ID_3)
+```
+
+####Now I am going to filter out trials if they fall outside of +-3 SD from the participants mean
+```{r}
+require(dplyr)
+by_ID_4=by_ID_3
+by_ID_4$responsebutton.rt<-replace(by_ID_4$responsebutton.rt,by_ID_4$responsebutton.rt>by_ID_4$out_hi_RT, NA)
+by_ID_4$responsebutton.rt<-replace(by_ID_4$responsebutton.rt,by_ID_4$responsebutton.rt<by_ID_4$out_low_RT, NA)
+View(by_ID_4)
+summary(by_ID_4)
+```
+
+####To view the windsorized rt.
+```{r}
+hist(by_ID_4$responsebutton.rt)
+```
+
+
+###To override FlankerTask master.
+```{r}
+FlankerTask_MASTER=by_ID_4
+```
+
+####Now lets conduct the multi-level model.
+####The dependent variables is reaction time.
+####The level 1 fixed effects are morph type (i.e., whether the face is masculinized or feminized), 
+
+####The level 2 fixed effects are trait dominance and trait anxiety.
+####The random effects are cue image (i.e., the image presented for that trial) and participant.
+
+```{r}
+require(lme4)
+M1 = glmer(data=FlankerTask_MASTER,responsebutton.rt~Face_Type_Code*zDomIPIP*zTrait+(1|ID:cue_image_1), family=Gamma(link ="inverse"), glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5)))
+summary(M1)
+```
+
+
+
+
+
+##Now let's get the confidence intervals for our model.
+```{r}
+se<- sqrt(diag(vcov(M1)))
+View(se)
+#generate table of estimates with 95% CI
+(tab<-cbind(Est = fixef(M1), LL=fixef(M1)-1.96*se, UL=fixef(M1)+1.96*se))
+View(tab)
+```
+####To obtain the ICC for models 2.
+```{r}
+require(sjstats)
+performance::icc(M1)
+```
+
+
+####Let's use ggplot to create a regression plot for the data.
+```{r}
+require(sjPlot)
+library(sjmisc)
+plot_model(M1)
+```
